@@ -9,8 +9,9 @@ const router = Router();
 
 const storage = multer.diskStorage({
   destination: 'uploads/',
-  filename: (req: AuthRequest, file, cb) => {
-    cb(null, `${req.user!.id}-${Date.now()}${path.extname(file.originalname)}`);
+  filename: (req, file, cb) => {
+    const authReq = req as unknown as AuthRequest;
+    cb(null, `${authReq.user!.id}-${Date.now()}${path.extname(file.originalname)}`);
   },
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
@@ -37,7 +38,7 @@ router.put('/profil', authMiddleware, async (req: AuthRequest, res: Response): P
 });
 
 // POST /api/users/photo - Upload photo de profil
-router.post('/photo', authMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/photo', authMiddleware, upload.single('photo') as any, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const photoUrl = `/uploads/${req.file!.filename}`;
     await User.findByIdAndUpdate(req.user!.id, { photo: photoUrl });
