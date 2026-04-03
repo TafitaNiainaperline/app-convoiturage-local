@@ -1,19 +1,21 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
-require('dotenv').config();
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import http from 'http';
+import { Server } from 'socket.io';
+import dotenv from 'dotenv';
 
-const authRoutes = require('./routes/auth');
-const tripRoutes = require('./routes/trips');
-const bookingRoutes = require('./routes/bookings');
-const userRoutes = require('./routes/users');
+import authRoutes from './routes/auth';
+import tripRoutes from './routes/trips';
+import bookingRoutes from './routes/bookings';
+import userRoutes from './routes/users';
+
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' }
+  cors: { origin: '*' },
 });
 
 // Middleware
@@ -28,7 +30,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/users', userRoutes);
 
 // Health check
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({ message: 'API Covoiturage Madagascar - OK' });
 });
 
@@ -36,12 +38,11 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Client connecté:', socket.id);
 
-  socket.on('driver:location', (data) => {
-    // data = { tripId, lat, lng }
+  socket.on('driver:location', (data: { tripId: string; lat: number; lng: number }) => {
     socket.to(`trip:${data.tripId}`).emit('driver:location', data);
   });
 
-  socket.on('join:trip', (tripId) => {
+  socket.on('join:trip', (tripId: string) => {
     socket.join(`trip:${tripId}`);
   });
 
@@ -51,14 +52,14 @@ io.on('connection', (socket) => {
 });
 
 // Connexion MongoDB
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI as string)
   .then(() => {
     console.log('MongoDB connecté');
     server.listen(process.env.PORT || 5000, () => {
       console.log(`Serveur lancé sur le port ${process.env.PORT || 5000}`);
     });
   })
-  .catch((err) => {
+  .catch((err: Error) => {
     console.error('Erreur MongoDB:', err.message);
     process.exit(1);
   });
