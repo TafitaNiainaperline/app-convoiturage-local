@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
+import mongoose from 'mongoose';
 import Booking from '../models/Booking';
 import Trip from '../models/Trip';
+import Notification from '../models/Notification';
 import authMiddleware from '../middleware/auth';
 import { AuthRequest } from '../types';
 
@@ -46,6 +48,15 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response): Promis
     }
     await trajet.save();
 
+    // Notifier le conducteur d'une nouvelle réservation
+    await Notification.create({
+      destinataire: trajet.conducteur,
+      type: 'nouvelle_reservation',
+      message: `Nouvelle demande de réservation pour votre trajet ${(trajet as any).depart?.ville} → ${(trajet as any).arrivee?.ville}.`,
+      trajetId: trajet._id,
+      reservationId: reservation._id,
+    });
+
     res.status(201).json(reservation);
   } catch (err: any) {
     res.status(500).json({ message: 'Erreur serveur.', error: err.message });
@@ -67,7 +78,7 @@ router.get('/mes-reservations', authMiddleware, async (req: AuthRequest, res: Re
 // GET /api/bookings/trajet/:tripId - Réservations d'un trajet (conducteur)
 router.get('/trajet/:tripId', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const trajet = await Trip.findOne({ _id: req.params.tripId, conducteur: req.user!.id });
+    const trajet = await Trip.findOne({ _id: req.params.tripId, conducteur: new mongoose.Types.ObjectId(req.user!.id) });
     if (!trajet) {
       res.status(403).json({ message: 'Non autorisé.' });
       return;
@@ -100,6 +111,26 @@ router.put('/:id/statut', authMiddleware, async (req: AuthRequest, res: Response
 
     reservation.statut = statut;
     await reservation.save();
+
+    // Notifier le passager du changement de statut
+    const messages: Record<string, string> = {
+      confirme: `Votre réservation pour le trajet ${trajet.depart?.ville} → ${trajet.arrivee?.ville} a été confirmée.`,
+      refuse:   `Votre réservation pour le trajet ${trajet.depart?.ville} → ${trajet.arrivee?.ville} a été refusée.`,
+    };
+    const types: Record<string, string> = {
+      confirme: 'reservation_confirmee',
+      refuse:   'reservation_refusee',
+    };
+    if (messages[statut]) {
+      await Notification.create({
+        destinataire: reservation.passager,
+        type: types[statut],
+        message: messages[statut],
+        trajetId: trajet._id,
+        reservationId: reservation._id,
+      });
+    }
+
     res.json(reservation);
   } catch (err: any) {
     res.status(500).json({ message: 'Erreur serveur.', error: err.message });
@@ -118,10 +149,21 @@ router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response): P
     reservation.statut = 'annule';
     await reservation.save();
 
-    await Trip.findByIdAndUpdate(reservation.trajet, {
+    const trajetAnnule = await Trip.findByIdAndUpdate(reservation.trajet, {
       $inc: { placesReservees: -reservation.nbPlaces },
       statut: 'disponible',
     });
+
+    // Notifier le conducteur de l'annulation
+    if (trajetAnnule) {
+      await Notification.create({
+        destinataire: trajetAnnule.conducteur,
+        type: 'reservation_annulee',
+        message: `Un passager a annulé sa réservation pour le trajet ${(trajetAnnule as any).depart?.ville} → ${(trajetAnnule as any).arrivee?.ville}.`,
+        trajetId: trajetAnnule._id,
+        reservationId: reservation._id,
+      });
+    }
 
     res.json({ message: 'Réservation annulée.' });
   } catch (err: any) {
